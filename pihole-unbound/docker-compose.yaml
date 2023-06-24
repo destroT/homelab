@@ -1,0 +1,66 @@
+services:
+  pihole:
+    image: pihole/pihole:latest
+    restart: unless-stopped
+    hostname: pihole.local
+    depends_on:
+      - unbound
+    ports:
+      - "1010:80/tcp"
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "67:67/udp"
+    dns:
+      - 127.0.0.1
+    #   - 9.9.9.9 # Quad9
+    #   - 1.1.1.1 # CloudFlare
+    # Add volumes if you want to persist data
+    # volumes:
+    # - ./pihole:/etc/pihole
+    #   - ./dnsmasq.d:/etc/dnsmasq.d
+    environment:
+      - PIHOLE_DNS_=172.21.200.3#53 # forward to unbound
+      - WEBPASSWORD=${WEBPASSWORD}
+      - FTLCONF_LOCAL_IPV4=${HOST_IP_V4_ADDRESS}
+      - TZ=${TIMEZONE}
+      - DNSMASQ_LISTENING=${DNSMASQ_LISTENING}
+      - DNS_BOGUS_PRIV=${DNS_BOGUS_PRIV}
+      - INTERFACE=${PIHOLE_INTERFACE}
+      - WEBTHEME=${WEBTHEME}
+      - DNS_FQDN_REQUIRED=${DNS_FQDN_REQUIRED}
+      - DNSSEC=${DNSSEC}
+      - REV_SERVER=${REV_SERVER}
+    cap_add:
+      - NET_ADMIN
+    deploy:
+      resources:
+        # <- these settings are optional, but can help to limit resource reservations
+        limits:
+          memory: 768M
+        reservations:
+          memory: 256M
+    networks:
+      pihole_dns_network:
+        ipv4_address: 172.21.200.2
+  unbound:
+    image: mvance/unbound:latest
+    hostname: unbound.local
+    restart: unless-stopped
+    ports:
+      - "5335:53/udp"
+      - "5335:53/tcp"
+    volumes:
+      - ./unbound:/opt/unbound/etc/unbound
+    networks:
+      pihole_dns_network:
+        ipv4_address: 172.21.200.3 # <-- this is used by pihole as upstream DNS
+
+networks:
+  pihole_dns_network:
+    name: "pihole_dns_network"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.21.200.0/24
+          gateway: 172.21.200.1
+          ip_range: 172.21.200.128/25 # 172.21.200.129 - 172.21.200.254

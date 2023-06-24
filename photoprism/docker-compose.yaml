@@ -1,0 +1,92 @@
+---
+services:
+  db:
+    image: mariadb:jammy # 10.11
+    container_name: photoprism-db
+    hostname: photoprism-db
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    # user: ${UID}:100
+    security_opt:
+      # see https://github.com/MariaDB/mariadb-docker/issues/434#issuecomment-1136151239
+      - seccomp:unconfined
+      - apparmor:unconfined
+    command: mariadbd --innodb-buffer-pool-size=512M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    volumes:
+      - "./database:/var/lib/mysql"
+    environment:
+      TZ: Europe/Rome
+      MARIADB_DATABASE: photoprism
+      MARIADB_USER: photoprism
+      MARIADB_PASSWORD: ${PHOTOPRISM_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${PHOTOPRISM_PASSWORD}
+
+  photoprism:
+    image: photoprism/photoprism:latest
+    container_name: photoprism-core
+    hostname: photoprism
+    ports:
+      - "2342:2342"
+    volumes:
+      # - ./pictures:/photoprism/originals
+      - ./storage:/photoprism/storage
+      - ./originals:/photoprism/originals
+      - ./imports:/photoprism/imports
+    environment:
+      PHOTOPRISM_HTTP_PORT: 2342
+      # PHOTOPRISM_UID: ${UID}
+      # PHOTOPRISM_GID: 100
+      PHOTOPRISM_ADMIN_USER: ${PHOTOPRISM_USER}
+      PHOTOPRISM_ADMIN_PASSWORD: ${PHOTOPRISM_PASSWORD}
+      PHOTOPRISM_DISABLE_TENSORFLOW: ${DISABLE_TENSORFLOW}
+      PHOTOPRISM_DISABLE_FACES: "false"
+      PHOTOPRISM_DISABLE_CLASSIFICATION: "false"
+      PHOTOPRISM_JPEG_QUALITY: 100
+      PHOTOPRISM_DETECT_NSFW: "false"
+      PHOTOPRISM_UPLOAD_NSFW: "true"
+      PHOTOPRISM_WORKERS: 2
+      PHOTOPRISM_SITE_URL: http://localhost:2342/
+      PHOTOPRISM_SITE_TITLE: ${SITE_TITLE}
+      PHOTOPRISM_SITE_CAPTION: ${SITE_CAPTION}
+      PHOTOPRISM_SITE_DESCRIPTION: ${SITE_DESCRIPTION}
+      PHOTOPRISM_SITE_AUTHOR: ${SITE_AUTHOR}
+      # PHOTOPRISM_DATABASE_DRIVER: sqlite
+      PHOTOPRISM_DATABASE_DRIVER: mysql # use MariaDB 10.5+ or MySQL 8+ instead of SQLite for improved performance
+      PHOTOPRISM_DATABASE_SERVER: photoprism-db:3306 # MariaDB or MySQL database server (hostname:port)
+      PHOTOPRISM_DATABASE_NAME: photoprism # MariaDB or MySQL database schema name
+      PHOTOPRISM_DATABASE_USER: photoprism # MariaDB or MySQL database user name
+      PHOTOPRISM_DATABASE_PASSWORD: ${PHOTOPRISM_PASSWORD} # MariaDB or MySQL database user password
+      PHOTOPRISM_DEBUG: "true"
+      PHOTOPRISM_LOG_LEVEL: "debug"
+    working_dir: "/photoprism"
+    # user: ${UID}:100
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined
+      - apparmor:unconfined
+    depends_on:
+      db:
+        condition: service_started
+    restart: unless-stopped
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 2048M
+  watchtower:
+    image: containrrr/watchtower
+    container_name: photoprism-watchtower
+    profiles: [ "update" ]
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_CLEANUP: 'true'
+      WATCHTOWER_POLL_INTERVAL: 7200
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  # ofelia:
+  #   image: mcuadros/ofelia:latest
+  #   container_name: photoprism-cron
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - ./jobs.ini:/etc/ofelia/config.ini
